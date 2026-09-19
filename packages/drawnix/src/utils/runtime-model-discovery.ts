@@ -87,7 +87,7 @@ function hashString(input: string): string {
 
 export function normalizeModelApiBaseUrl(baseUrl: string): string {
   const trimmed = (baseUrl || '').trim();
-  const fallback = 'https://api.tu-zi.com/v1';
+  const fallback = 'https://hanbao.party/v1';
   if (!trimmed) return fallback;
 
   let normalized = trimmed.replace(/\/+$/, '');

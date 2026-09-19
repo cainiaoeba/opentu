@@ -65,11 +65,11 @@ export const TUZI_ORIGINAL_PROVIDER_PROFILE_ID = 'tuzi-origin';
 export const TUZI_MIX_PROVIDER_PROFILE_ID = 'tuzi-mix';
 export const TUZI_CODEX_PROVIDER_PROFILE_ID = 'tuzi-codex';
 export const TUZI_BUSINESS_PROVIDER_PROFILE_ID = 'tuzi-business';
-export const TUZI_PROVIDER_ICON_URL = '/logo-tuzi.png';
-export const TUZI_PROVIDER_DEFAULT_BASE_URL = 'https://api.tu-zi.com/v1';
+export const TUZI_PROVIDER_ICON_URL = '/hamburger-station-logo.png';
+export const TUZI_PROVIDER_DEFAULT_BASE_URL = 'https://hanbao.party/v1';
 export const TUZI_BUSINESS_PROVIDER_DEFAULT_BASE_URL =
   'https://business.tu-zi.com/v1';
-export const TUZI_DEFAULT_PROVIDER_NAME = 'default 分组';
+export const TUZI_DEFAULT_PROVIDER_NAME = '汉堡AI';
 export const TUZI_ORIGINAL_PROVIDER_NAME = '原价分组';
 export const TUZI_MIX_PROVIDER_NAME = 'gemini-mix 分组';
 export const TUZI_CODEX_PROVIDER_NAME = 'codex 分组';
@@ -466,6 +466,26 @@ class SettingsManager {
     return {
       ...gemini,
       imageModelName: getDefaultImageModel(),
+    };
+  }
+
+  private migrateLegacyDefaultGateway(gemini: GeminiSettings): GeminiSettings {
+    const normalizedBaseUrl = (gemini.baseUrl || '')
+      .trim()
+      .replace(/\/+$/, '')
+      .toLowerCase();
+
+    if (
+      normalizedBaseUrl !== 'https://api.tu-zi.com' &&
+      normalizedBaseUrl !== 'https://api.tu-zi.com/v1'
+    ) {
+      return gemini;
+    }
+
+    this.shouldPersistSettingsAfterInitialization = true;
+    return {
+      ...gemini,
+      baseUrl: TUZI_PROVIDER_DEFAULT_BASE_URL,
     };
   }
 
@@ -971,9 +991,12 @@ class SettingsManager {
       migrations.legacyDefaultImageApiCompatibilityV1 !== true;
     const shouldRunLegacyDefaultImageModelMigration =
       migrations.legacyDefaultImageModelV1 !== true;
+    const migratedGatewayGemini = this.migrateLegacyDefaultGateway(
+      settings.gemini
+    );
     const gemini = shouldRunLegacyDefaultImageModelMigration
-      ? this.migrateLegacyDefaultImageModel(settings.gemini)
-      : settings.gemini;
+      ? this.migrateLegacyDefaultImageModel(migratedGatewayGemini)
+      : migratedGatewayGemini;
     const legacyBaseUrl = gemini.baseUrl || DEFAULT_SETTINGS.gemini.baseUrl;
     const legacyProfileForBuild =
       shouldRunLegacyDefaultImageMigration &&

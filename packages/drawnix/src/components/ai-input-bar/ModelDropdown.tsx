@@ -55,7 +55,6 @@ import {
 import { compareModelsByDisplayPriority } from '../../utils/model-sort';
 import {
   LEGACY_DEFAULT_PROVIDER_PROFILE_ID,
-  TUZI_ORIGINAL_PROVIDER_PROFILE_ID,
   createModelRef,
   type ModelRef,
   type ProviderProfile,
@@ -185,6 +184,10 @@ export interface ModelDropdownProps {
   providerProfilesOverride?: ProviderProfile[];
   /** 是否显示供应商管理入口 */
   showProviderAction?: boolean;
+  /** 汉堡AI单平台模式：隐藏供应商/厂商分栏，平铺当前 Key 的模型 */
+  lockedToPlatform?: boolean;
+  /** 严格使用传入目录，不回退到内置静态模型 */
+  strictCatalog?: boolean;
 }
 
 /**
@@ -207,6 +210,8 @@ export const ModelDropdown: React.FC<ModelDropdownProps> = ({
   onOpenChange,
   providerProfilesOverride,
   showProviderAction = true,
+  lockedToPlatform = false,
+  strictCatalog = false,
 }) => {
   const { setAppState } = useDrawnix();
   const { value: isOpen, setValue: setIsOpen } = useControllableState({
@@ -267,13 +272,6 @@ export const ModelDropdown: React.FC<ModelDropdownProps> = ({
     () =>
       new Map(
         providerGroups.map((group) => [group.providerId, group.providerName])
-      ),
-    [providerGroups]
-  );
-  const providerModelCountMap = useMemo(
-    () =>
-      new Map(
-        providerGroups.map((group) => [group.providerId, group.totalCount])
       ),
     [providerGroups]
   );
@@ -342,7 +340,7 @@ export const ModelDropdown: React.FC<ModelDropdownProps> = ({
   const currentModel =
     models.find(
       (model) => getModelKey(model) === (selectedSelectionKey || selectedModel)
-    ) || getModelConfig(selectedModel);
+    ) || (strictCatalog ? undefined : getModelConfig(selectedModel));
   const currentProfile = useMemo(
     () => (currentModel ? getModelProfile(currentModel) : null),
     [currentModel, getModelProfile]
@@ -350,7 +348,13 @@ export const ModelDropdown: React.FC<ModelDropdownProps> = ({
   const shouldUseVendorIconInTrigger =
     currentModel?.vendor === ModelVendor.HAPPYHORSE;
   // 使用 shortCode 或默认简写
-  const shortCode = currentModel?.shortCode || 'img';
+  const shortCode =
+    currentModel?.shortCode ||
+    (strictCatalog
+      ? language === 'zh'
+        ? '配置模型'
+        : 'Configure'
+      : 'img');
   const isSearching = Boolean(searchQuery.trim());
 
   // 从 selectionKey 或 currentModel 推导当前选中模型所属的供应商 ID 和 vendor
@@ -404,8 +408,13 @@ export const ModelDropdown: React.FC<ModelDropdownProps> = ({
   );
 
   const displayedModels = useMemo(
-    () => (isSearching ? filteredModelList : activeCategory?.models || []),
-    [isSearching, filteredModelList, activeCategory]
+    () =>
+      isSearching
+        ? filteredModelList
+        : lockedToPlatform
+        ? models
+        : activeCategory?.models || [],
+    [isSearching, filteredModelList, lockedToPlatform, models, activeCategory]
   );
 
   // 供应商标签列表（第一列）
@@ -477,25 +486,12 @@ export const ModelDropdown: React.FC<ModelDropdownProps> = ({
   );
 
   const handleOpenProviderSettings = useCallback(() => {
-    const availableProfiles = effectiveProviderProfiles.filter(
-      (profile) => profile.id !== LEGACY_DEFAULT_PROVIDER_PROFILE_ID
-    );
-    const lastProfile =
-      availableProfiles[availableProfiles.length - 1] || null;
-    const lastProfileModelCount = lastProfile
-      ? providerModelCountMap.get(lastProfile.id) || 0
-      : 0;
-
-    const intent: ProviderSettingsIntent =
-      lastProfile && lastProfileModelCount === 0
-        ? { action: 'select', profileId: lastProfile.id }
-        : availableProfiles.some(
-            (profile) =>
-              profile.id === TUZI_ORIGINAL_PROVIDER_PROFILE_ID &&
-              (providerModelCountMap.get(profile.id) || 0) === 0
-          )
-        ? { action: 'select', profileId: TUZI_ORIGINAL_PROVIDER_PROFILE_ID }
-        : { action: 'create' };
+    // 汉堡小站已经注入了网关地址和兼容格式。点击加号时直接进入
+    // 内置汉堡AI配置，避免普通用户接触供应商、协议和 Base URL 配置。
+    const intent: ProviderSettingsIntent = {
+      action: 'select',
+      profileId: LEGACY_DEFAULT_PROVIDER_PROFILE_ID,
+    };
 
     (
       window as typeof window & {
@@ -509,7 +505,7 @@ export const ModelDropdown: React.FC<ModelDropdownProps> = ({
     );
     setIsOpen(false);
     setAppState((prev) => ({ ...prev, openSettings: true }));
-  }, [effectiveProviderProfiles, providerModelCountMap, setAppState, setIsOpen]);
+  }, [setAppState, setIsOpen]);
 
   // 当过滤结果变化时，高亮选中模型或重置到第一项
   useEffect(() => {
@@ -927,7 +923,7 @@ export const ModelDropdown: React.FC<ModelDropdownProps> = ({
               variant === 'form' ? 'model-dropdown__menu--form' : ''
             } ${
               isPortalled ? 'model-dropdown__menu--portalled' : ''
-            } ${ATTACHED_ELEMENT_CLASS_NAME}`}
+            } ${lockedToPlatform ? 'model-dropdown__menu--platform-locked' : ''} ${ATTACHED_ELEMENT_CLASS_NAME}`}
             ref={menuRef}
             role="listbox"
             aria-label={language === 'zh' ? '选择模型' : 'Select Model'}
@@ -1102,9 +1098,24 @@ export const ModelDropdown: React.FC<ModelDropdownProps> = ({
                     })
                   ) : (
                     <div className="model-dropdown__empty">
-                      {language === 'zh'
-                        ? '未找到匹配的模型'
-                        : 'No matching models'}
+                      <span>
+                        {language === 'zh'
+                          ? models.length === 0
+                            ? '请先配置汉堡AI API Key'
+                            : '未找到匹配的模型'
+                          : models.length === 0
+                          ? 'Configure your 汉堡AI API Key first'
+                          : 'No matching models'}
+                      </span>
+                      {models.length === 0 ? (
+                        <button
+                          type="button"
+                          className="model-dropdown__empty-action"
+                          onClick={handleOpenProviderSettings}
+                        >
+                          {language === 'zh' ? '配置 API Key' : 'Configure API Key'}
+                        </button>
+                      ) : null}
                     </div>
                   )}
                 </div>

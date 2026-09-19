@@ -164,7 +164,7 @@ export const UnifiedToolbar: React.FC<UnifiedToolbarProps> = React.memo(
     onEnableToolWindows,
   }) => {
     const [isIconMode, setIsIconMode] = useState(false);
-    const [isMobileCollapsed, setIsMobileCollapsed] = useState(true); // 移动端默认收起
+    const [isMobileCollapsed, setIsMobileCollapsed] = useState(false); // 默认展开工具栏
     const [toolbarLeft, setToolbarLeft] = useState(readStoredToolbarLeft);
     const [isToolbarDragging, setIsToolbarDragging] = useState(false);
     const [isTaskPanelAnimationReady, setIsTaskPanelAnimationReady] =

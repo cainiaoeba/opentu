@@ -689,6 +689,7 @@ export const SettingsDialog = ({
     new Set()
   );
   const [isApiKeyVisible, setIsApiKeyVisible] = useState(false);
+  const [isHambaoQuickSetup, setIsHambaoQuickSetup] = useState(false);
 
   const toggleGroupCollapse = (type: ModelType) => {
     setCollapsedGroups((prev) => {
@@ -889,6 +890,16 @@ export const SettingsDialog = ({
     const geminiConfig = geminiSettings.get();
     let nextShowWorkZoneCard = true;
     const pendingProviderIntent = readPendingProviderNavigationIntent();
+    // React StrictMode may re-run this initialization effect in development.
+    // The first pass consumes the pending navigation intent, so only update the
+    // quick-setup flag when an intent is actually present. Closing the dialog
+    // resets the flag for a normal Settings open.
+    if (pendingProviderIntent) {
+      setIsHambaoQuickSetup(
+        pendingProviderIntent.action === 'select' &&
+          pendingProviderIntent.profileId === LEGACY_DEFAULT_PROVIDER_PROFILE_ID
+      );
+    }
     const nextSelectedProfileId =
       pendingProviderIntent?.action === 'select' &&
       nextProfiles.some(
@@ -1456,7 +1467,7 @@ export const SettingsDialog = ({
         source: 'settings_dialog',
         metadata: { profileId: selectedProfile.id },
       });
-      await runtimeModelDiscovery.discover(
+      const discoveredModels = await runtimeModelDiscovery.discover(
         selectedProfile.id,
         normalizedBaseUrl,
         trimmedApiKey
@@ -1468,7 +1479,18 @@ export const SettingsDialog = ({
         source: 'settings_dialog',
         metadata: { profileId: selectedProfile.id },
       });
-      setDiscoveryDialogOpen(true);
+      handleApplySelectedModels(
+        discoveredModels.map((model) => model.id),
+        {
+          successMessage: `已保存 API Key，并同步 ${discoveredModels.length} 个可用模型`,
+        }
+      );
+      // Persist the final, automatically selected catalog before closing. The
+      // quick setup is deliberately a single-step flow for 汉堡AI users.
+      const persisted = await persistDrafts(false);
+      if (persisted) {
+        closeSettingsDialog();
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : '模型同步失败';
       analytics.trackUIInteraction({
@@ -1585,6 +1607,7 @@ export const SettingsDialog = ({
   };
 
   const closeSettingsDialog = () => {
+    setIsHambaoQuickSetup(false);
     setAppState((prev) => ({ ...prev, openSettings: false }));
   };
 
@@ -2045,8 +2068,155 @@ export const SettingsDialog = ({
     const selectedCounts = getModelTypeCounts(runtimeState.models);
     const draftState = getProviderDraftState(selectedProfile, initialProfiles);
     const totalModels =
-      selectedCounts.image + selectedCounts.video + selectedCounts.text;
+      selectedCounts.image +
+      selectedCounts.video +
+      selectedCounts.audio +
+      selectedCounts.text;
+    const hasApiKey = Boolean(selectedProfile.apiKey.trim());
+    const isApiKeyConfigured = hasApiKey && draftState === 'saved';
     const selectedProfileHomepageUrl = getProviderHomepageUrl(selectedProfile);
+
+    if (selectedProfile.id === LEGACY_DEFAULT_PROVIDER_PROFILE_ID) {
+      return (
+        <div
+          key={compactMode ? 'provider-detail-hanbao-ai' : undefined}
+          className={`settings-dialog__content-panel settings-dialog__content-panel--providers ${
+            compactMode ? 'settings-dialog__content-panel--detail' : ''
+          }`}
+        >
+          <div className="settings-dialog__section settings-dialog__section--compact">
+            <div className="settings-dialog__panel-header">
+              <div className="settings-dialog__profile-hero">
+                <ProviderAvatar profile={selectedProfile} size="large" />
+                <div>
+                  <div className="settings-dialog__inline-meta">
+                    <span>汉堡AI 生图工作台</span>
+                  </div>
+                  <h3 className="settings-dialog__section-title">接入汉堡AI</h3>
+                </div>
+              </div>
+            </div>
+            <p className="settings-dialog__field-hint" style={{ marginTop: 12 }}>
+              网关地址、接口格式和模型分组均已配置完成，只需填写你在汉堡小站创建的 API Key。
+            </p>
+          </div>
+
+          <div className="settings-dialog__section">
+            <div className="settings-dialog__field settings-dialog__field--column settings-dialog__field--full">
+              <label className="settings-dialog__label settings-dialog__label--stacked">
+                API Key
+              </label>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '8px',
+                  alignItems: 'center',
+                  width: '100%',
+                  flexDirection: isCompactLayout ? 'column' : 'row',
+                }}
+              >
+                <div
+                  className="settings-dialog__secret-input-wrap"
+                  style={{ flex: isCompactLayout ? 'none' : 1 }}
+                >
+                  <input
+                    type={isApiKeyVisible ? 'text' : 'password'}
+                    className="settings-dialog__input settings-dialog__secret-input"
+                    value={selectedProfile.apiKey}
+                    placeholder="请输入汉堡小站 API Key"
+                    onChange={(event) =>
+                      updateProfile(selectedProfile.id, (profile) => ({
+                        ...profile,
+                        name: '汉堡AI',
+                        apiKey: event.target.value,
+                      }))
+                    }
+                    autoComplete="off"
+                  />
+                  <HoverTip
+                    content={isApiKeyVisible ? '隐藏 API Key' : '查看 API Key'}
+                    showArrow={false}
+                  >
+                    <button
+                      type="button"
+                      className="settings-dialog__secret-toggle"
+                      aria-label={isApiKeyVisible ? '隐藏 API Key' : '查看 API Key'}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => setIsApiKeyVisible((visible) => !visible)}
+                    >
+                      {isApiKeyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </HoverTip>
+                </div>
+                <button
+                  type="button"
+                  className="settings-dialog__button settings-dialog__button--fetch"
+                  style={{
+                    whiteSpace: 'nowrap',
+                    height: isCompactLayout ? '42px' : '32px',
+                    width: isCompactLayout ? '100%' : 'auto',
+                  }}
+                  onClick={handleFetchModels}
+                  disabled={!canManageModels || runtimeState.status === 'loading'}
+                >
+                  {runtimeState.status === 'loading' ? (
+                    <>
+                      <Loader2 size={15} className="settings-dialog__button-spinner" />
+                      正在获取模型
+                    </>
+                  ) : (
+                    '保存并获取模型'
+                  )}
+                </button>
+              </div>
+              <span className="settings-dialog__field-hint">
+                已配置模型 {totalModels} 个；Key 仅保存在当前浏览器中。
+              </span>
+            </div>
+
+            <div
+              className="settings-dialog__key-status"
+              aria-label="API Key 状态"
+            >
+              <div className="settings-dialog__key-status-header">
+                <span>Key 状态</span>
+                <strong
+                  className={`settings-dialog__key-status-value ${
+                    isApiKeyConfigured
+                      ? 'settings-dialog__key-status-value--configured'
+                      : hasApiKey
+                      ? 'settings-dialog__key-status-value--pending'
+                      : ''
+                  }`}
+                >
+                  {isApiKeyConfigured
+                    ? '已配置'
+                    : hasApiKey
+                    ? '待保存'
+                    : '未配置'}
+                </strong>
+              </div>
+              <div className="settings-dialog__key-status-grid">
+                {([
+                  ['生图', selectedCounts.image],
+                  ['文本', selectedCounts.text],
+                  ['视频', selectedCounts.video],
+                  ['音频', selectedCounts.audio],
+                ] as const).map(([label, count]) => (
+                  <div
+                    key={label}
+                    className="settings-dialog__key-status-card"
+                  >
+                    <span>{label}</span>
+                    <strong>{count > 0 ? `${count}个模型` : '待获取'}</strong>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div
@@ -3134,41 +3304,52 @@ export const SettingsDialog = ({
       <WinBoxWindow
         id="settings-dialog"
         visible={appState.openSettings}
-        title="设置"
+        title={isHambaoQuickSetup ? '接入汉堡AI' : '设置'}
         onClose={handleWindowClose}
-        width={isCompactLayout ? '100%' : '88%'}
-        height={isCompactLayout ? '100%' : '88%'}
+        width={isCompactLayout ? '100%' : isHambaoQuickSetup ? 720 : '88%'}
+        height={isCompactLayout ? '100%' : isHambaoQuickSetup ? 500 : '88%'}
         minWidth={
           isCompactLayout
             ? Math.max(320, Math.min(viewportWidth - 16, 640))
+            : isHambaoQuickSetup
+            ? 720
             : 1080
         }
         minHeight={
           isCompactLayout
             ? Math.max(520, Math.min(viewportHeight - 16, 820))
+            : isHambaoQuickSetup
+            ? 500
             : 680
         }
         x="center"
         y="center"
-        maximizable={true}
         minimizable={false}
-        resizable={!isCompactLayout}
-        movable={!isCompactLayout}
         modal={false}
-        className="winbox-ai-generation winbox-tool-window winbox-settings-window"
+        className={`winbox-ai-generation winbox-tool-window winbox-settings-window ${
+          isHambaoQuickSetup ? 'winbox-settings-window--hambao-quick' : ''
+        }`}
         container={container}
-        background="#ffffff"
+        maximizable={!isHambaoQuickSetup}
+        resizable={!isCompactLayout && !isHambaoQuickSetup}
+        movable={!isCompactLayout && !isHambaoQuickSetup}
+        background={isHambaoQuickSetup ? '#111827' : '#ffffff'}
       >
         <div
           ref={dialogRef}
           className={`settings-dialog ${
             isCompactLayout ? 'settings-dialog--compact' : ''
-          }`}
+          } ${isHambaoQuickSetup ? 'settings-dialog--hambao-quick' : ''}`}
           data-testid="settings-dialog"
         >
-          <div className="settings-dialog__layout">
-            {renderSettingsNav()}
-            <div className="settings-dialog__main">{renderActiveView()}</div>
+          <div
+            className="settings-dialog__layout"
+            style={isHambaoQuickSetup ? { gridTemplateColumns: '1fr' } : undefined}
+          >
+            {isHambaoQuickSetup ? null : renderSettingsNav()}
+            <div className="settings-dialog__main">
+              {isHambaoQuickSetup ? renderProviderForm(false) : renderActiveView()}
+            </div>
           </div>
         </div>
       </WinBoxWindow>

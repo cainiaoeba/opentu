@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <!-- 权限策略：禁止 unload 事件（不影响 beforeunload） -->
     <!-- 基本 SEO Meta 标签 -->
-    <title>Opentu 开图 | AI 图片生成、流程图、思维导图与画布工作区</title>
+    <title>汉堡AI</title>
     <meta
       name="description"
       content="Opentu（开图）是一个以画布工作区为核心的 AI 应用平台，支持 AI 图片生成、流程图、思维导图、素材管理与任务推进，在一个浏览器窗口里完成创作与整理。"
@@ -13,8 +13,8 @@
       name="keywords"
       content="Opentu,开图,AI图片生成,AI绘图,流程图,思维导图,白板,画布工作区,AI工作流,素材库,知识库,任务队列"
     />
-    <meta name="application-name" content="Opentu" />
-    <meta name="author" content="Opentu Team" />
+    <meta name="application-name" content="汉堡AI" />
+    <meta name="author" content="汉堡AI" />
     <meta name="theme-color" content="#ffffff" />
     <meta
       name="robots"
@@ -64,7 +64,7 @@
     <link rel="alternate" hreflang="zh-CN" href="https://opentu.ai" />
     <link rel="alternate" hreflang="x-default" href="https://opentu.ai" />
     <!-- 结构化数据 (JSON-LD) -->
-    <script type="application/ld+json">
+    <script type="application/ld+json" nonce="__CSP_NONCE_VALUE__">
       {
         "@context": "https://schema.org",
         "@graph": [
@@ -490,7 +490,7 @@
     <meta name="theme-color" content="#ffffff" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="Opentu" />
+    <meta name="apple-mobile-web-app-title" content="汉堡AI" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="msapplication-TileColor" content="#ffffff" />
     <meta name="msapplication-tap-highlight" content="no" />
@@ -519,13 +519,7 @@
       aria-label="应用正在加载"
     >
       <div class="app-boot-card">
-        <a
-          class="app-boot-mark"
-          href="https://opentu.ai/"
-          data-official-site-link
-          aria-label="打开 OpenTu.ai 官网"
-          >OpenTu.ai</a
-        >
+        <span class="app-boot-mark">汉堡AI</span>
         <p class="app-boot-title" data-app-boot-title>正在唤起工作台</p>
         <p class="app-boot-tip" data-app-boot-tip>
           脚本与资源加载中，马上就好...
@@ -664,7 +658,7 @@
         </ul>
       </section>
     </main>
-    <script>
+    <script nonce="__CSP_NONCE_VALUE__">
       (function () {
         var bootReady = false;
         var bootProgress = 0;
@@ -685,7 +679,8 @@
         var BOOT_LOCAL_RETRY_STORAGE_KEY = '__OPENTU_BOOT_LOCAL_RETRY_AT__';
         var BOOT_IMPORT_RETRY_STORAGE_KEY = '__OPENTU_BOOT_IMPORT_RETRY_AT__';
         var BOOT_LOCAL_RETRY_TTL_MS = 2 * 60 * 1000;
-        var forceLocalBootAssets = false;
+        // 汉堡小站自托管全部工作台资源，避免启动阶段依赖上游 CDN。
+        var forceLocalBootAssets = true;
         window.__OPENTU_START_MAIN_ENTRY__ = new Promise(function (resolve) {
           resolveMainEntryReady = resolve;
         });
@@ -730,7 +725,7 @@
 
             forceLocalBootAssets = true;
           } catch (_error) {
-            forceLocalBootAssets = false;
+            forceLocalBootAssets = true;
           }
         })();
 
@@ -1464,7 +1459,7 @@
       })();
     </script>
     <div id="root"></div>
-    <script type="module">
+    <script type="module" nonce="__CSP_NONCE_VALUE__">
       (async function () {
         try {
           await (window.__OPENTU_START_MAIN_ENTRY__ || Promise.resolve());
@@ -1483,7 +1478,7 @@
   </body>
   <!-- PostHog Analytics -->
   <!-- 本地开发环境（localhost/127.0.0.1）默认不加载，除非 URL 带 report=1 参数 -->
-  <script>
+  <script nonce="__CSP_NONCE_VALUE__">
     (function () {
       var isLocalDev =
         window.location.hostname === 'localhost' ||

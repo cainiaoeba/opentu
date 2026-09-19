@@ -73,8 +73,7 @@ import {
   addVideoPromptHistory,
   type PromptType,
 } from '../../services/prompt-storage-service';
-import { useSelectableModels } from '../../hooks/use-runtime-models';
-import { getPinnedSelectableModel } from '../../utils/runtime-model-discovery';
+import { useProfileSelectedModels } from '../../hooks/use-runtime-models';
 import {
   getDefaultAudioModel,
   getDefaultImageModel,
@@ -119,6 +118,7 @@ import {
   hasInvocationRouteCredentials,
   resolveInvocationRoute,
   createModelRef,
+  LEGACY_DEFAULT_PROVIDER_PROFILE_ID,
   type ModelRef,
 } from '../../utils/settings-manager';
 import { promptForApiKey } from '../../utils/gemini-api/auth';
@@ -801,10 +801,24 @@ export const AIInputBar: React.FC<AIInputBarProps> = React.memo(
     // console.log('[AIInputBar] Component rendering');
 
     const { language } = useI18n();
-    const imageModels = useSelectableModels('image');
-    const videoModels = useSelectableModels('video');
-    const audioModels = useSelectableModels('audio');
-    const textModels = useSelectableModels('text');
+    // 汉堡AI工作台只展示当前 API Key 实际发现并启用的模型。
+    // 不再混入内置演示目录，避免未配置 Key 时展示不可用模型。
+    const imageModels = useProfileSelectedModels(
+      LEGACY_DEFAULT_PROVIDER_PROFILE_ID,
+      'image'
+    );
+    const videoModels = useProfileSelectedModels(
+      LEGACY_DEFAULT_PROVIDER_PROFILE_ID,
+      'video'
+    );
+    const audioModels = useProfileSelectedModels(
+      LEGACY_DEFAULT_PROVIDER_PROFILE_ID,
+      'audio'
+    );
+    const textModels = useProfileSelectedModels(
+      LEGACY_DEFAULT_PROVIDER_PROFILE_ID,
+      'text'
+    );
 
     const chatDrawerControl = useChatDrawerControl();
     const workflowControl = useWorkflowControl();
@@ -1158,12 +1172,7 @@ export const AIInputBar: React.FC<AIInputBarProps> = React.memo(
         return imageModels;
       }
 
-      const pinnedModel = getPinnedSelectableModel(
-        'image',
-        selectedModel,
-        selectedModelRef
-      );
-      return pinnedModel ? [pinnedModel, ...imageModels] : imageModels;
+      return imageModels;
     }, [generationType, imageModels, selectedModel, selectedModelRef]);
     const visibleVideoModels = useMemo(() => {
       if (generationType !== 'video') {
@@ -1179,12 +1188,7 @@ export const AIInputBar: React.FC<AIInputBarProps> = React.memo(
         return videoModels;
       }
 
-      const pinnedModel = getPinnedSelectableModel(
-        'video',
-        selectedModel,
-        selectedModelRef
-      );
-      return pinnedModel ? [pinnedModel, ...videoModels] : videoModels;
+      return videoModels;
     }, [generationType, selectedModel, selectedModelRef, videoModels]);
     const visibleAudioModels = useMemo(() => {
       if (generationType !== 'audio') {
@@ -1200,12 +1204,7 @@ export const AIInputBar: React.FC<AIInputBarProps> = React.memo(
         return audioModels;
       }
 
-      const pinnedModel = getPinnedSelectableModel(
-        'audio',
-        selectedModel,
-        selectedModelRef
-      );
-      return pinnedModel ? [pinnedModel, ...audioModels] : audioModels;
+      return audioModels;
     }, [audioModels, generationType, selectedModel, selectedModelRef]);
     const visibleTextModels = useMemo(() => {
       if (generationType !== 'text' && generationType !== 'agent') {
@@ -1221,12 +1220,7 @@ export const AIInputBar: React.FC<AIInputBarProps> = React.memo(
         return textModels;
       }
 
-      const pinnedModel = getPinnedSelectableModel(
-        'text',
-        selectedModel,
-        selectedModelRef
-      );
-      return pinnedModel ? [pinnedModel, ...textModels] : textModels;
+      return textModels;
     }, [generationType, selectedModel, selectedModelRef, textModels]);
     const visibleAgentImageModels = useMemo(() => {
       const currentMatch = findMatchingSelectableModel(
@@ -1238,12 +1232,7 @@ export const AIInputBar: React.FC<AIInputBarProps> = React.memo(
         return imageModels;
       }
 
-      const pinnedModel = getPinnedSelectableModel(
-        'image',
-        selectedAgentImageModel,
-        selectedAgentImageModelRef
-      );
-      return pinnedModel ? [pinnedModel, ...imageModels] : imageModels;
+      return imageModels;
     }, [imageModels, selectedAgentImageModel, selectedAgentImageModelRef]);
     const visibleAgentVideoModels = useMemo(() => {
       const currentMatch = findMatchingSelectableModel(
@@ -1255,12 +1244,7 @@ export const AIInputBar: React.FC<AIInputBarProps> = React.memo(
         return videoModels;
       }
 
-      const pinnedModel = getPinnedSelectableModel(
-        'video',
-        selectedAgentVideoModel,
-        selectedAgentVideoModelRef
-      );
-      return pinnedModel ? [pinnedModel, ...videoModels] : videoModels;
+      return videoModels;
     }, [selectedAgentVideoModel, selectedAgentVideoModelRef, videoModels]);
     const visibleAgentAudioModels = useMemo(() => {
       const currentMatch = findMatchingSelectableModel(
@@ -1272,12 +1256,7 @@ export const AIInputBar: React.FC<AIInputBarProps> = React.memo(
         return audioModels;
       }
 
-      const pinnedModel = getPinnedSelectableModel(
-        'audio',
-        selectedAgentAudioModel,
-        selectedAgentAudioModelRef
-      );
-      return pinnedModel ? [pinnedModel, ...audioModels] : audioModels;
+      return audioModels;
     }, [audioModels, selectedAgentAudioModel, selectedAgentAudioModelRef]);
     // 当前选中的参数映射 (id -> value)
     const [selectedParams, setSelectedParams] = useState<
@@ -4727,7 +4706,9 @@ export const AIInputBar: React.FC<AIInputBarProps> = React.memo(
         selectedModelRef?.profileId,
       ]
     );
-    const canGenerate = prompt.trim().length > 0 || allContent.length > 0;
+    const canGenerate =
+      currentModels.length > 0 &&
+      (prompt.trim().length > 0 || allContent.length > 0);
     const shouldHighlightInspirationSend =
       isInspirationSendGuideActive && canGenerate && !isSubmitting;
     const showInspirationBoard = isCanvasEmpty === true;
@@ -4892,6 +4873,8 @@ export const AIInputBar: React.FC<AIInputBarProps> = React.memo(
                   onSelectModel={handleModelConfigSelect}
                   language={language}
                   models={currentModels}
+                  lockedToPlatform
+                  strictCatalog
                   header={
                     language === 'zh'
                       ? generationType === 'agent'
@@ -4922,6 +4905,8 @@ export const AIInputBar: React.FC<AIInputBarProps> = React.memo(
                       }
                       language={language}
                       models={visibleAgentImageModels}
+                      lockedToPlatform
+                      strictCatalog
                       header={
                         language === 'zh'
                           ? '选择图片模型 (↑↓ Tab)'
@@ -4947,6 +4932,8 @@ export const AIInputBar: React.FC<AIInputBarProps> = React.memo(
                       }
                       language={language}
                       models={visibleAgentVideoModels}
+                      lockedToPlatform
+                      strictCatalog
                       header={
                         language === 'zh'
                           ? '选择视频模型 (↑↓ Tab)'
@@ -4972,6 +4959,8 @@ export const AIInputBar: React.FC<AIInputBarProps> = React.memo(
                       }
                       language={language}
                       models={visibleAgentAudioModels}
+                      lockedToPlatform
+                      strictCatalog
                       header={
                         language === 'zh'
                           ? '选择音频模型 (↑↓ Tab)'

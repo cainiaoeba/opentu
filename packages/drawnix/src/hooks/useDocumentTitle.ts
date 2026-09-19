@@ -1,28 +1,20 @@
 /**
  * useDocumentTitle Hook
  *
- * 管理页面标题，格式为 "Opentu - 项目名"
- * 监听画板名称变化并同步更新页面标题
+ * 管理汉堡 AI 工作台的浏览器标签页标题。
  */
 
 import { useEffect, useCallback } from 'react';
 import { workspaceService } from '../services/workspace-service';
 
-// 默认标题前缀
-const TITLE_PREFIX = 'Opentu';
-// 默认标题（无项目时）
-const DEFAULT_TITLE = 'Opentu - AI应用平台';
+const APP_TITLE = '汉堡AI';
 
 /**
  * 设置页面标题
  * @param boardName 画板名称，如果为空则使用默认标题
  */
-function setDocumentTitle(boardName?: string): void {
-  if (boardName && boardName.trim()) {
-    document.title = `${TITLE_PREFIX} - ${boardName.trim()}`;
-  } else {
-    document.title = DEFAULT_TITLE;
-  }
+function setDocumentTitle(_boardName?: string): void {
+  document.title = APP_TITLE;
 }
 
 /**

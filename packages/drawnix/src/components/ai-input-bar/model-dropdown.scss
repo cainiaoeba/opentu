@@ -357,10 +357,30 @@ $green-health: #10b981;
   }
 
   &__empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
     padding: 20px;
     text-align: center;
     color: $gray-medium;
     font-size: 13px;
+  }
+
+  &__empty-action {
+    min-height: 34px;
+    padding: 0 14px;
+    border: 1px solid rgba($orange-primary, 0.35);
+    border-radius: 10px;
+    background: rgba($orange-primary, 0.1);
+    color: $orange-dark;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+
+    &:hover {
+      background: rgba($orange-primary, 0.16);
+    }
   }
 
   // 模型项
@@ -499,6 +519,22 @@ $green-health: #10b981;
     }
   }
 
+}
+
+.model-dropdown__menu--platform-locked {
+  min-width: 420px;
+  max-width: min(520px, calc(100vw - 24px));
+
+  .vendor-tab-panel__tabs,
+  .vendor-tab-panel__middle-tabs {
+    display: none;
+  }
+
+  .vendor-tab-panel,
+  .vendor-tab-panel__content {
+    min-height: 220px;
+    width: 100%;
+  }
 }
 
 @keyframes model-dropdown-fade-in {

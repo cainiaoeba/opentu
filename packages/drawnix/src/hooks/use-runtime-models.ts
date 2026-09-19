@@ -72,3 +72,21 @@ export function useProfilePreferredModels(
     return next;
   }, [profileId, modelType, state]);
 }
+
+/**
+ * Returns only models explicitly enabled from a provider's discovered catalog.
+ * Unlike useSelectableModels, this never mixes in the built-in demo catalog.
+ */
+export function useProfileSelectedModels(
+  profileId: string,
+  modelType: ModelType
+): ModelConfig[] {
+  const state = useRuntimeModelDiscoveryState(profileId);
+  const prevRef = useRef<ModelConfig[]>([]);
+  return useMemo(() => {
+    const next = state.models.filter((model) => model.type === modelType);
+    if (areModelListsEqual(prevRef.current, next)) return prevRef.current;
+    prevRef.current = next;
+    return next;
+  }, [modelType, state]);
+}
