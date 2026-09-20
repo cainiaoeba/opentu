@@ -519,6 +519,29 @@ $green-health: #10b981;
     }
   }
 
+  &__change-key {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex-shrink: 0;
+    height: 30px;
+    padding: 4px 7px;
+    border: 1px solid rgba($orange-primary, 0.35);
+    border-radius: 6px;
+    background: rgba($orange-primary, 0.06);
+    color: $orange-dark;
+    font-size: 12px;
+    line-height: 1.2;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.15s ease;
+
+    &:hover {
+      border-color: rgba($orange-primary, 0.7);
+      background: rgba($orange-primary, 0.12);
+    }
+  }
+
 }
 
 .model-dropdown__menu--platform-locked {
@@ -686,6 +709,12 @@ $green-health: #10b981;
     }
 
     &__provider-action {
+      background: rgba($orange-primary, 0.12);
+      border-color: rgba($orange-primary, 0.45);
+      color: #fbbf24;
+    }
+
+    &__change-key {
       background: rgba($orange-primary, 0.12);
       border-color: rgba($orange-primary, 0.45);
       color: #fbbf24;

@@ -180,4 +180,29 @@ describe('ModelDropdown', () => {
     expect(menu.style.width).toBe('680px');
     expect(menu.classList.contains('model-dropdown__menu--down')).toBe(true);
   });
+
+  it('平台锁定模式始终提供更换 API Key 入口', () => {
+    const { container } = render(
+      <ModelDropdown
+        selectedModel={baseModel.id}
+        selectedSelectionKey={baseModel.selectionKey}
+        models={[baseModel]}
+        onSelect={vi.fn()}
+        lockedToPlatform
+        strictCatalog
+      />
+    );
+
+    mockRect(container.querySelector('.model-dropdown') as HTMLElement, {
+      top: 100,
+      left: 24,
+      bottom: 140,
+      width: 240,
+    });
+    fireEvent.mouseDown(
+      container.querySelector('.model-dropdown__trigger--minimal') as HTMLElement
+    );
+
+    expect(screen.getByRole('button', { name: '更换 API Key' })).toBeTruthy();
+  });
 });

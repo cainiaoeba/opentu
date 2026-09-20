@@ -17,7 +17,16 @@ import React, {
 } from 'react';
 import { copyToClipboard } from '../../utils/runtime-helpers';
 import { createPortal } from 'react-dom';
-import { Check, ChevronDown, Copy, ExternalLink, Plus, Search, X } from 'lucide-react';
+import {
+  Check,
+  ChevronDown,
+  Copy,
+  ExternalLink,
+  KeyRound,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react';
 import { MessagePlugin } from 'tdesign-react';
 import {
   IMAGE_MODELS,
@@ -984,6 +993,21 @@ export const ModelDropdown: React.FC<ModelDropdownProps> = ({
                     ) : null}
                   </div>
                 </div>
+                {lockedToPlatform ? (
+                  <button
+                    type="button"
+                    className="model-dropdown__change-key"
+                    onClick={handleOpenProviderSettings}
+                    aria-label={
+                      language === 'zh' ? '更换 API Key' : 'Change API Key'
+                    }
+                  >
+                    <KeyRound size={14} />
+                    <span>
+                      {language === 'zh' ? '更换 API Key' : 'Change API Key'}
+                    </span>
+                  </button>
+                ) : null}
               </div>
             ) : header ? (
               <div className="model-dropdown__header">{header}</div>

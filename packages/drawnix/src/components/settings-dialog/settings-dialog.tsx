@@ -1494,6 +1494,7 @@ export const SettingsDialog = ({
           successMessage: `已保存 API Key，并同步 ${discoveredModels.length} 个可用模型`,
         }
       );
+      await runtimeModelDiscovery.flushPersistence();
       // Persist the final, automatically selected catalog before closing. The
       // quick setup is deliberately a single-step flow for 汉堡AI users.
       const persisted = await persistDrafts(false);
@@ -3353,7 +3354,7 @@ export const SettingsDialog = ({
               className="settings-dialog-modal-backdrop"
               aria-hidden="true"
             />,
-            document.body
+            container || document.body
           )
         : null}
       <WinBoxWindow

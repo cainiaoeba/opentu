@@ -1117,6 +1117,7 @@ function removeLegacyPersistedState(): void {
 class RuntimeModelDiscoveryStore {
   private catalogStates = new Map<string, RuntimeModelDiscoveryState>();
   private listeners = new Set<() => void>();
+  private catalogPersistenceQueue: Promise<void> = Promise.resolve();
 
   constructor() {
     this.catalogStates = this.loadCatalogStatesFromSettings();
@@ -1204,9 +1205,17 @@ class RuntimeModelDiscoveryStore {
     this.emit();
   };
 
-  private async persistCatalogs(): Promise<void> {
+  private persistCatalogs(): Promise<void> {
     const catalogs = Array.from(this.catalogStates.values()).map(toCatalog);
-    await providerCatalogsSettings.update(catalogs);
+    const persist = this.catalogPersistenceQueue
+      .catch(() => undefined)
+      .then(() => providerCatalogsSettings.update(catalogs));
+    this.catalogPersistenceQueue = persist;
+    return persist;
+  }
+
+  async flushPersistence(): Promise<void> {
+    await this.catalogPersistenceQueue;
   }
 
   private setCatalogState(

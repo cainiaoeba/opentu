@@ -146,6 +146,74 @@ describe('runtime-model-discovery', () => {
     expect(result.removedModelIds).toEqual(['model-a']);
   });
 
+  it('按触发顺序持久化目录，避免旧的空选择覆盖最终模型', async () => {
+    const persistedCatalogs: Array<
+      Array<{ profileId: string; selectedModelIds: string[] }>
+    > = [];
+    let releaseFirstWrite: (() => void) | undefined;
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        text: async () =>
+          JSON.stringify({
+            data: [{ id: 'gpt-image-1', category: '生图' }],
+          }),
+      }))
+    );
+    vi.doMock('../settings-manager', () => ({
+      LEGACY_DEFAULT_PROVIDER_PROFILE_ID: 'legacy-default',
+      providerCatalogsSettings: {
+        get: () => [],
+        addListener: () => {},
+        removeListener: () => {},
+        update: vi.fn(async (catalogs) => {
+          persistedCatalogs.push(structuredClone(catalogs));
+          if (persistedCatalogs.length === 1) {
+            await new Promise<void>((resolve) => {
+              releaseFirstWrite = resolve;
+            });
+          }
+        }),
+      },
+      providerProfilesSettings: {
+        get: () => [{ id: 'legacy-default', name: '汉堡AI', enabled: true }],
+        addListener: () => {},
+        removeListener: () => {},
+      },
+      invocationPresetsSettings: {
+        addListener: () => {},
+        removeListener: () => {},
+      },
+      settingsManager: {
+        getSetting: () => ({}),
+        addListener: () => {},
+        removeListener: () => {},
+      },
+    }));
+
+    const { runtimeModelDiscovery } = await import('../runtime-model-discovery');
+    const models = await runtimeModelDiscovery.discover(
+      'legacy-default',
+      'https://api.example.com/v1',
+      'test-key'
+    );
+    runtimeModelDiscovery.applySelection(
+      'legacy-default',
+      models.map((model) => model.id)
+    );
+
+    await vi.waitFor(() => expect(persistedCatalogs).toHaveLength(1));
+    expect(persistedCatalogs[0][0].selectedModelIds).toEqual([]);
+
+    releaseFirstWrite?.();
+    await runtimeModelDiscovery.flushPersistence();
+
+    expect(persistedCatalogs).toHaveLength(2);
+    expect(persistedCatalogs[1][0].selectedModelIds).toEqual(['gpt-image-1']);
+  });
+
   it('加载旧目录时会刷新 HappyHorse 的供应商分类', async () => {
     vi.doMock('../settings-manager', () => ({
       LEGACY_DEFAULT_PROVIDER_PROFILE_ID: 'legacy-default',
