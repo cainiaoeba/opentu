@@ -1181,6 +1181,15 @@ export default defineConfig({
   server: {
     port: 7200,
     host: 'localhost',
+    proxy: {
+      // 浏览器始终请求同源 /v1；本地开发时由 Vite 转发到线上网关，
+      // 避免 Safari/Chrome 因跨域预检失败而只显示 “Load failed”。
+      '/v1': {
+        target: process.env.HANBAO_API_PROXY_TARGET || 'https://hanbao.party',
+        changeOrigin: true,
+        secure: true,
+      },
+    },
     headers: {
       'Content-Security-Policy':
         "default-src 'self' https: data: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://us.i.posthog.com https://us-assets.i.posthog.com https://wiki.tu-zi.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' http: https: ws: wss: data:; frame-ancestors 'self' localhost:* 127.0.0.1:* https://api.tu-zi.com;",

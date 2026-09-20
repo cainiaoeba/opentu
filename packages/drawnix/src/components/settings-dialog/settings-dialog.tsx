@@ -11,6 +11,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { Switch } from 'tdesign-react';
 import { InfoCircleIcon } from 'tdesign-icons-react';
 import {
@@ -30,10 +31,7 @@ import {
 import { LS_KEYS } from '../../constants/storage-keys';
 import { ModelDiscoveryDialog } from './model-discovery-dialog';
 import { PricingFieldGroup } from './pricing-field-group';
-import {
-  useModelPriceText,
-  useModelMeta,
-} from '../../hooks/use-model-pricing';
+import { useModelPriceText, useModelMeta } from '../../hooks/use-model-pricing';
 import {
   getDefaultAudioModel,
   getDefaultImageModel,
@@ -690,6 +688,7 @@ export const SettingsDialog = ({
   );
   const [isApiKeyVisible, setIsApiKeyVisible] = useState(false);
   const [isHambaoQuickSetup, setIsHambaoQuickSetup] = useState(false);
+  const fetchModelsInFlightRef = useRef(false);
 
   const toggleGroupCollapse = (type: ModelType) => {
     setCollapsedGroups((prev) => {
@@ -1442,6 +1441,10 @@ export const SettingsDialog = ({
       return;
     }
 
+    if (fetchModelsInFlightRef.current) {
+      return;
+    }
+
     if (hasPendingChanges) {
       const saved = await persistDrafts(false);
       if (!saved) {
@@ -1450,15 +1453,21 @@ export const SettingsDialog = ({
     }
 
     const trimmedApiKey = selectedProfile.apiKey.trim();
-    const normalizedBaseUrl = normalizeModelApiBaseUrl(
-      selectedProfile.baseUrl.trim() || TUZI_PROVIDER_DEFAULT_BASE_URL
-    );
+    // 汉堡AI 快速配置不向用户暴露网关字段，因此不能继续使用
+    // 旧版本在浏览器中留下的 localhost / 旧上游地址。
+    const normalizedBaseUrl =
+      selectedProfile.id === LEGACY_DEFAULT_PROVIDER_PROFILE_ID
+        ? TUZI_PROVIDER_DEFAULT_BASE_URL
+        : normalizeModelApiBaseUrl(
+            selectedProfile.baseUrl.trim() || TUZI_PROVIDER_DEFAULT_BASE_URL
+          );
 
     if (!trimmedApiKey) {
       MessagePlugin.warning('请先填写 API Key');
       return;
     }
 
+    fetchModelsInFlightRef.current = true;
     try {
       analytics.trackUIInteraction({
         area: 'settings',
@@ -1508,6 +1517,8 @@ export const SettingsDialog = ({
         content: message,
         duration: 3600,
       });
+    } finally {
+      fetchModelsInFlightRef.current = false;
     }
   };
 
@@ -1619,9 +1630,12 @@ export const SettingsDialog = ({
     setIsPersisting(true);
     try {
       const normalizedProfiles = profilesDraft.map((profile) => {
-        const normalizedBaseUrl = profile.baseUrl.trim()
-          ? normalizeModelApiBaseUrl(profile.baseUrl)
-          : '';
+        const normalizedBaseUrl =
+          profile.id === LEGACY_DEFAULT_PROVIDER_PROFILE_ID
+            ? TUZI_PROVIDER_DEFAULT_BASE_URL
+            : profile.baseUrl.trim()
+            ? normalizeModelApiBaseUrl(profile.baseUrl)
+            : '';
 
         return {
           ...profile,
@@ -1782,7 +1796,9 @@ export const SettingsDialog = ({
           closeAfterSave,
           profilesCount: normalizedProfiles.length,
           presetsCount: normalizedPresets.length,
-          enabledProfilesCount: normalizedProfiles.filter((profile) => profile.enabled).length,
+          enabledProfilesCount: normalizedProfiles.filter(
+            (profile) => profile.enabled
+          ).length,
         },
       });
 
@@ -2096,8 +2112,12 @@ export const SettingsDialog = ({
                 </div>
               </div>
             </div>
-            <p className="settings-dialog__field-hint" style={{ marginTop: 12 }}>
-              网关地址、接口格式和模型分组均已配置完成，只需填写你在汉堡小站创建的 API Key。
+            <p
+              className="settings-dialog__field-hint"
+              style={{ marginTop: 12 }}
+            >
+              网关地址、接口格式和模型分组均已配置完成，只需填写你在汉堡小站创建的
+              API Key。
             </p>
           </div>
 
@@ -2128,6 +2148,7 @@ export const SettingsDialog = ({
                       updateProfile(selectedProfile.id, (profile) => ({
                         ...profile,
                         name: '汉堡AI',
+                        baseUrl: TUZI_PROVIDER_DEFAULT_BASE_URL,
                         apiKey: event.target.value,
                       }))
                     }
@@ -2140,11 +2161,17 @@ export const SettingsDialog = ({
                     <button
                       type="button"
                       className="settings-dialog__secret-toggle"
-                      aria-label={isApiKeyVisible ? '隐藏 API Key' : '查看 API Key'}
+                      aria-label={
+                        isApiKeyVisible ? '隐藏 API Key' : '查看 API Key'
+                      }
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => setIsApiKeyVisible((visible) => !visible)}
                     >
-                      {isApiKeyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                      {isApiKeyVisible ? (
+                        <EyeOff size={16} />
+                      ) : (
+                        <Eye size={16} />
+                      )}
                     </button>
                   </HoverTip>
                 </div>
@@ -2157,11 +2184,16 @@ export const SettingsDialog = ({
                     width: isCompactLayout ? '100%' : 'auto',
                   }}
                   onClick={handleFetchModels}
-                  disabled={!canManageModels || runtimeState.status === 'loading'}
+                  disabled={
+                    !canManageModels || runtimeState.status === 'loading'
+                  }
                 >
                   {runtimeState.status === 'loading' ? (
                     <>
-                      <Loader2 size={15} className="settings-dialog__button-spinner" />
+                      <Loader2
+                        size={15}
+                        className="settings-dialog__button-spinner"
+                      />
                       正在获取模型
                     </>
                   ) : (
@@ -2197,16 +2229,15 @@ export const SettingsDialog = ({
                 </strong>
               </div>
               <div className="settings-dialog__key-status-grid">
-                {([
-                  ['生图', selectedCounts.image],
-                  ['文本', selectedCounts.text],
-                  ['视频', selectedCounts.video],
-                  ['音频', selectedCounts.audio],
-                ] as const).map(([label, count]) => (
-                  <div
-                    key={label}
-                    className="settings-dialog__key-status-card"
-                  >
+                {(
+                  [
+                    ['生图', selectedCounts.image],
+                    ['文本', selectedCounts.text],
+                    ['视频', selectedCounts.video],
+                    ['音频', selectedCounts.audio],
+                  ] as const
+                ).map(([label, count]) => (
+                  <div key={label} className="settings-dialog__key-status-card">
                     <span>{label}</span>
                     <strong>{count > 0 ? `${count}个模型` : '待获取'}</strong>
                   </div>
@@ -2384,7 +2415,15 @@ export const SettingsDialog = ({
               </span>
             </div>
 
-            <div className="settings-dialog__field settings-dialog__field--full" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <div
+              className="settings-dialog__field settings-dialog__field--full"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                flexWrap: 'wrap',
+              }}
+            >
               <label className="settings-dialog__label" style={{ margin: 0 }}>
                 图片优先使用异步接口（实验功能，建议不要开，还未上线）
               </label>
@@ -2406,7 +2445,10 @@ export const SettingsDialog = ({
                   );
                 }}
               />
-              <span className="settings-dialog__field-hint" style={{ width: '100%' }}>
+              <span
+                className="settings-dialog__field-hint"
+                style={{ width: '100%' }}
+              >
                 开启后，支持异步接口的图片模型将优先使用 /v1/videos 异步接口生成
               </span>
             </div>
@@ -2547,7 +2589,11 @@ export const SettingsDialog = ({
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => setIsApiKeyVisible((visible) => !visible)}
                     >
-                      {isApiKeyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                      {isApiKeyVisible ? (
+                        <EyeOff size={16} />
+                      ) : (
+                        <Eye size={16} />
+                      )}
                     </button>
                   </HoverTip>
                 </div>
@@ -3301,6 +3347,15 @@ export const SettingsDialog = ({
 
   return (
     <>
+      {appState.openSettings && isHambaoQuickSetup
+        ? createPortal(
+            <div
+              className="settings-dialog-modal-backdrop"
+              aria-hidden="true"
+            />,
+            document.body
+          )
+        : null}
       <WinBoxWindow
         id="settings-dialog"
         visible={appState.openSettings}
@@ -3325,7 +3380,7 @@ export const SettingsDialog = ({
         x="center"
         y="center"
         minimizable={false}
-        modal={false}
+        modal={isHambaoQuickSetup}
         className={`winbox-ai-generation winbox-tool-window winbox-settings-window ${
           isHambaoQuickSetup ? 'winbox-settings-window--hambao-quick' : ''
         }`}
@@ -3344,11 +3399,15 @@ export const SettingsDialog = ({
         >
           <div
             className="settings-dialog__layout"
-            style={isHambaoQuickSetup ? { gridTemplateColumns: '1fr' } : undefined}
+            style={
+              isHambaoQuickSetup ? { gridTemplateColumns: '1fr' } : undefined
+            }
           >
             {isHambaoQuickSetup ? null : renderSettingsNav()}
             <div className="settings-dialog__main">
-              {isHambaoQuickSetup ? renderProviderForm(false) : renderActiveView()}
+              {isHambaoQuickSetup
+                ? renderProviderForm(false)
+                : renderActiveView()}
             </div>
           </div>
         </div>

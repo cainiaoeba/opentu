@@ -66,7 +66,10 @@ export const TUZI_MIX_PROVIDER_PROFILE_ID = 'tuzi-mix';
 export const TUZI_CODEX_PROVIDER_PROFILE_ID = 'tuzi-codex';
 export const TUZI_BUSINESS_PROVIDER_PROFILE_ID = 'tuzi-business';
 export const TUZI_PROVIDER_ICON_URL = '/hamburger-station-logo.png';
-export const TUZI_PROVIDER_DEFAULT_BASE_URL = 'https://hanbao.party/v1';
+export const TUZI_PROVIDER_DEFAULT_BASE_URL =
+  typeof window === 'undefined'
+    ? 'https://hanbao.party/v1'
+    : `${window.location.origin}/v1`;
 export const TUZI_BUSINESS_PROVIDER_DEFAULT_BASE_URL =
   'https://business.tu-zi.com/v1';
 export const TUZI_DEFAULT_PROVIDER_NAME = '汉堡AI';

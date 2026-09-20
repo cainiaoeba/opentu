@@ -1,3 +1,5 @@
+@import '../../styles/z-index.scss';
+
 .winbox-settings-window {
   .wb-header {
     border-bottom-color: rgba(15, 23, 42, 0.08) !important;
@@ -22,6 +24,7 @@
 }
 
 .winbox-settings-window--hambao-quick {
+  z-index: $z-dialog-settings !important;
   border: 1px solid rgba(245, 158, 11, 0.28) !important;
   box-shadow: 0 28px 80px rgba(2, 6, 23, 0.48) !important;
 
@@ -34,10 +37,48 @@
     color: #f8fafc;
   }
 
+  .wb-split {
+    display: none !important;
+  }
+
+  .wb-close {
+    width: 38px !important;
+    height: 38px !important;
+    margin-right: 6px !important;
+    opacity: 1 !important;
+    filter: none !important;
+    background-color: rgba(248, 250, 252, 0.14) !important;
+    border: 1px solid rgba(248, 250, 252, 0.34) !important;
+    background-position: center !important;
+    background-size: 16px !important;
+
+    &:hover {
+      background-color: rgba(239, 68, 68, 0.92) !important;
+      border-color: rgba(254, 202, 202, 0.92) !important;
+      filter: none !important;
+      transform: scale(1.04);
+    }
+
+    &:focus-visible {
+      outline: 3px solid rgba(251, 191, 36, 0.92);
+      outline-offset: 2px;
+    }
+  }
+
   .wb-body,
   .winbox-content-wrapper {
     background: #111827 !important;
   }
+}
+
+.settings-dialog-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: $z-dialog-settings - 1;
+  background: rgba(15, 23, 42, 0.48);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  pointer-events: auto;
 }
 
 @keyframes settings-dialog-spin {
@@ -2266,7 +2307,9 @@
     background: #151e2e;
   }
 
-  .settings-dialog__content-panel--providers .settings-dialog__section + .settings-dialog__section {
+  .settings-dialog__content-panel--providers
+    .settings-dialog__section
+    + .settings-dialog__section {
     border-top-color: rgba(148, 163, 184, 0.14);
   }
 

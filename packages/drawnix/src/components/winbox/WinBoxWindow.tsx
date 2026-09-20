@@ -1054,6 +1054,58 @@ export const WinBoxWindow: React.FC<WinBoxWindowProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
+  // WinBox 的 modal 伪元素只负责视觉遮罩，其命中区域不会超出
+  // 窗口本身的布局边界。在捕获阶段拦截窗口外交互，确保背景画布和
+  // 工具栏在模态窗口打开时真正不可操作。
+  useEffect(() => {
+    if (!visible || !modal || !isReady) {
+      return;
+    }
+
+    const winboxElement = winboxElementRef.current;
+    if (!winboxElement) {
+      return;
+    }
+
+    const blockOutsideInteraction = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Node && winboxElement.contains(target)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+
+    document.addEventListener('pointerdown', blockOutsideInteraction, true);
+    document.addEventListener('click', blockOutsideInteraction, true);
+    document.addEventListener('contextmenu', blockOutsideInteraction, true);
+    document.addEventListener('wheel', blockOutsideInteraction, {
+      capture: true,
+      passive: false,
+    });
+    document.addEventListener('touchmove', blockOutsideInteraction, {
+      capture: true,
+      passive: false,
+    });
+
+    return () => {
+      document.removeEventListener(
+        'pointerdown',
+        blockOutsideInteraction,
+        true
+      );
+      document.removeEventListener('click', blockOutsideInteraction, true);
+      document.removeEventListener(
+        'contextmenu',
+        blockOutsideInteraction,
+        true
+      );
+      document.removeEventListener('wheel', blockOutsideInteraction, true);
+      document.removeEventListener('touchmove', blockOutsideInteraction, true);
+    };
+  }, [isReady, modal, visible]);
+
   // 从最小化恢复时播放展开动画
   const playRestoreAnimation = useCallback(() => {
     if (!minimizeTargetSelector || !winboxRef.current) return;
@@ -1144,10 +1196,7 @@ export const WinBoxWindow: React.FC<WinBoxWindowProps> = ({
 
     const handleInteractionStart = (event: MouseEvent | TouchEvent) => {
       const target = event.target;
-      if (
-        target instanceof Element &&
-        target.closest(resizeHandleSelector)
-      ) {
+      if (target instanceof Element && target.closest(resizeHandleSelector)) {
         interactionActiveRef.current = true;
       }
     };
