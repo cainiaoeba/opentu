@@ -20,6 +20,7 @@ import {
   TaskExecutionPhase,
 } from '../types/task.types';
 import { isResumableAsyncImageTask } from '../utils/task-utils';
+import { getInterruptedProcessingTasks } from '../utils/task-storage-recovery';
 
 // Global flag to prevent multiple initializations (persists across HMR)
 let initializationStarted = false;
@@ -73,12 +74,20 @@ export function useTaskStorage(): boolean {
         console.warn(`[useTaskStorage] Loaded ${storedTasks.length} tasks from IndexedDB`);
 
         if (storedTasks.length > 0) {
+          // A user can submit the first generation while this deferred startup
+          // read is still in flight. Those tasks already exist in memory and
+          // must not be mistaken for leftovers from a previous page session.
+          const liveTaskIdsBeforeRestore = new Set(
+            taskQueueService.getAllTasks().map((task) => task.id)
+          );
           taskQueueService.restoreTasks(storedTasks);
           console.warn(`[useTaskStorage] Restored ${storedTasks.length} tasks to memory`);
 
           // Handle interrupted processing tasks based on task type and remoteId
-          const processingTasks = storedTasks.filter(
-            (task) => task.status === 'processing'
+          const processingTasks = getInterruptedProcessingTasks(
+            storedTasks,
+            liveTaskIdsBeforeRestore,
+            window.performance.timeOrigin || Date.now()
           );
 
           if (processingTasks.length > 0) {
