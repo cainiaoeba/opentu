@@ -68,12 +68,10 @@ import {
   type ModelRef,
   type ProviderProfile,
 } from '../../utils/settings-manager';
-
-const SETTINGS_PROVIDER_NAV_EVENT = 'aitu:settings:provider-nav';
-
-type ProviderSettingsIntent =
-  | { action: 'select'; profileId: string }
-  | { action: 'create' };
+import {
+  SETTINGS_PROVIDER_NAV_EVENT,
+  type ProviderNavigationIntent as ProviderSettingsIntent,
+} from '../settings-dialog/provider-navigation-intent';
 
 function normalizeSearchText(value?: string | null): string {
   return (value || '').toLowerCase().replace(/[\s\-_.:/]+/g, '').trim();

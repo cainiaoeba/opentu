@@ -97,17 +97,19 @@ import { modelBenchmarkService } from '../../services/model-benchmark-service';
 import { HoverTip } from '../shared/hover';
 import { createProviderProfileDraft } from './provider-profile-draft';
 import { MessagePlugin } from '../../utils/message-plugin';
+import {
+  consumePendingProviderNavigationIntent,
+  isHambaoQuickSetupIntent,
+  peekPendingProviderNavigationIntent,
+  SETTINGS_PROVIDER_NAV_EVENT,
+  type ProviderNavigationIntent,
+} from './provider-navigation-intent';
 
 export { IMAGE_MODEL_GROUPED_SELECT_OPTIONS as IMAGE_MODEL_GROUPED_OPTIONS } from '../../constants/model-config';
 export { VIDEO_MODEL_SELECT_OPTIONS as VIDEO_MODEL_OPTIONS } from '../../constants/model-config';
 
 type SettingsView = 'providers' | 'presets' | 'canvas' | 'speech';
 type CompactPanelMode = 'catalog' | 'detail';
-type ProviderNavigationIntent =
-  | { action: 'select'; profileId: string }
-  | { action: 'create' };
-
-const SETTINGS_PROVIDER_NAV_EVENT = 'aitu:settings:provider-nav';
 const SETTINGS_DIALOG_COMPACT_BREAKPOINT = 980;
 
 const VIEW_SECTIONS: Array<{ value: SettingsView; label: string }> = [
@@ -490,27 +492,6 @@ function createProfile(index: number): ProviderProfile {
   return createProviderProfileDraft(index, createId('profile'));
 }
 
-function readPendingProviderNavigationIntent(): ProviderNavigationIntent | null {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  const intent =
-    (
-      window as typeof window & {
-        __aituPendingProviderNavigationIntent?: ProviderNavigationIntent;
-      }
-    ).__aituPendingProviderNavigationIntent || null;
-
-  (
-    window as typeof window & {
-      __aituPendingProviderNavigationIntent?: ProviderNavigationIntent;
-    }
-  ).__aituPendingProviderNavigationIntent = undefined;
-
-  return intent;
-}
-
 function inferAuthTypeForProviderType(
   providerType: ProviderProfile['providerType']
 ): ProviderProfile['authType'] {
@@ -655,6 +636,13 @@ export const SettingsDialog = ({
     viewportHeight,
   } = useDeviceType();
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  // The WinBox instance snapshots modal/class/size props when it is created.
+  // Peek (without consuming) before the first render so repeated opens never
+  // create a normal low-z-index window and then add the modal backdrop later.
+  // The ref also survives React StrictMode's repeated effect execution.
+  const initialProviderIntentRef = useRef<ProviderNavigationIntent | null>(
+    peekPendingProviderNavigationIntent()
+  );
   const [dialogWidth, setDialogWidth] = useState(0);
 
   const [activeView, setActiveView] = useState<SettingsView>('providers');
@@ -687,7 +675,9 @@ export const SettingsDialog = ({
     new Set()
   );
   const [isApiKeyVisible, setIsApiKeyVisible] = useState(false);
-  const [isHambaoQuickSetup, setIsHambaoQuickSetup] = useState(false);
+  const [isHambaoQuickSetup, setIsHambaoQuickSetup] = useState(() =>
+    isHambaoQuickSetupIntent(initialProviderIntentRef.current)
+  );
   const fetchModelsInFlightRef = useRef(false);
 
   const toggleGroupCollapse = (type: ModelType) => {
@@ -888,16 +878,15 @@ export const SettingsDialog = ({
       DEFAULT_INVOCATION_PRESET_ID;
     const geminiConfig = geminiSettings.get();
     let nextShowWorkZoneCard = true;
-    const pendingProviderIntent = readPendingProviderNavigationIntent();
+    const pendingProviderIntent =
+      consumePendingProviderNavigationIntent() ||
+      initialProviderIntentRef.current;
     // React StrictMode may re-run this initialization effect in development.
     // The first pass consumes the pending navigation intent, so only update the
     // quick-setup flag when an intent is actually present. Closing the dialog
     // resets the flag for a normal Settings open.
     if (pendingProviderIntent) {
-      setIsHambaoQuickSetup(
-        pendingProviderIntent.action === 'select' &&
-          pendingProviderIntent.profileId === LEGACY_DEFAULT_PROVIDER_PROFILE_ID
-      );
+      setIsHambaoQuickSetup(isHambaoQuickSetupIntent(pendingProviderIntent));
     }
     const nextSelectedProfileId =
       pendingProviderIntent?.action === 'select' &&
