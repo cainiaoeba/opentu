@@ -1,5 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import classNames from 'classnames';
+import { unifiedCacheService } from '../../services/unified-cache-service';
+import { isVirtualMediaUrl } from '../../utils/virtual-media-url';
 
 export interface VideoItem {
   url: string;
@@ -26,7 +28,56 @@ export const Video: React.FC<VideoProps> = (props: VideoProps) => {
 
   // 清理 URL 中的 #video 标识符（用于视频类型识别，但不影响实际播放）
   const url = rawUrl?.replace('#video', '') || '';
-  
+  const [playbackUrl, setPlaybackUrl] = useState(() =>
+    isVirtualMediaUrl(url) ? '' : url
+  );
+
+  useEffect(() => {
+    let disposed = false;
+    let objectUrl: string | null = null;
+
+    setIsLoading(true);
+    setVideoError(false);
+
+    if (!url) {
+      setPlaybackUrl('');
+      setIsLoading(false);
+      setVideoError(true);
+      return undefined;
+    }
+
+    if (!isVirtualMediaUrl(url)) {
+      setPlaybackUrl(url);
+      return undefined;
+    }
+
+    // 生成的视频已经存在 Cache Storage 中。直接转成 Blob URL 播放，
+    // 避免 Service Worker 首次尚未接管页面时，画布只显示白色占位框。
+    void unifiedCacheService.getCachedBlob(url).then((blob) => {
+      if (disposed) return;
+
+      if (blob?.size) {
+        objectUrl = URL.createObjectURL(blob);
+        setPlaybackUrl(objectUrl);
+        return;
+      }
+
+      // 缓存不存在时仍保留原有的 Service Worker 加载路径作为降级。
+      setPlaybackUrl(url);
+    }).catch(() => {
+      if (!disposed) {
+        setPlaybackUrl(url);
+      }
+    });
+
+    return () => {
+      disposed = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [url]);
+
   useEffect(() => {
     const video = videoRef.current;
     if (video) {
@@ -49,7 +100,7 @@ export const Video: React.FC<VideoProps> = (props: VideoProps) => {
       };
     }
     return undefined;
-  }, [url]);
+  }, [playbackUrl]);
 
   const stopCanvasPropagation = (e: React.SyntheticEvent) => {
     if (readonly) {
@@ -62,7 +113,7 @@ export const Video: React.FC<VideoProps> = (props: VideoProps) => {
       e.stopPropagation();
       // 在只读模式下，点击视频在新窗口打开
       e.preventDefault();
-      window.open(url, '_blank');
+      window.open(playbackUrl || url, '_blank');
     }
   };
 
@@ -139,13 +190,14 @@ export const Video: React.FC<VideoProps> = (props: VideoProps) => {
       <video
         ref={videoRef}
         data-slideshow-media-control="true"
-        src={url}
+        src={playbackUrl}
         poster={poster}
         width="100%"
         height="100%"
         controls={!readonly}
         muted
         playsInline
+        preload="auto"
         draggable={false}
         className={classNames('video-origin', {
           'video-origin--focus': isFocus,
