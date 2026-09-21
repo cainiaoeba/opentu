@@ -99,6 +99,15 @@ function isFluxModel(model: ModelConfig): boolean {
   );
 }
 
+function isGrokVideoModel(model: ModelConfig): boolean {
+  const lowerId = model.id.toLowerCase();
+  return (
+    model.type === 'video' &&
+    (model.vendor === ModelVendor.GROK || lowerId.includes('grok')) &&
+    lowerId.includes('video')
+  );
+}
+
 const KLING_TEXT2VIDEO_VERSION_OPTIONS = [
   'kling-v3',
   'kling-v2-6',
@@ -585,6 +594,31 @@ function inferVideoBindings(
   model: ModelConfig
 ): ProviderModelBinding[] {
   const bindings: ProviderModelBinding[] = [];
+
+  if (isGrokVideoModel(model)) {
+    bindings.push(
+      buildBinding(profile, model, {
+        protocol: 'xai.video',
+        requestSchema: 'xai.video.generation-json',
+        responseSchema: 'xai.video.task',
+        submitPath: '/videos/generations',
+        pollPathTemplate: '/videos/{taskId}',
+        metadata: {
+          video: {
+            allowedDurations: Array.from({ length: 15 }, (_, index) => String(index + 1)),
+            defaultDuration: '8',
+            durationMode: 'request-param',
+            durationField: 'duration',
+            strictDurationValidation: true,
+            downloadPathTemplate: '/videos/{taskId}/content',
+          },
+        },
+        priority: 700,
+        confidence: 'high',
+        source: 'template',
+      })
+    );
+  }
 
   if (isStandardKlingVideoModel(model)) {
     bindings.push(

@@ -879,6 +879,32 @@ describe('provider routing', () => {
     ]);
   });
 
+  it('prefers the xAI JSON video protocol for Grok video models', () => {
+    const bindings = inferBindingsForProviderModel(
+      {
+        id: 'hanbao',
+        name: '汉堡AI',
+        providerType: 'openai-compatible',
+        baseUrl: 'https://hanbao.party/v1',
+        apiKey: 'key-a',
+        authType: 'bearer',
+      },
+      {
+        id: 'grok-imagine-video-1.5',
+        label: 'Grok Imagine Video 1.5',
+        type: 'video',
+        vendor: ModelVendor.GROK,
+      }
+    );
+
+    expect(bindings[0]).toMatchObject({
+      protocol: 'xai.video',
+      requestSchema: 'xai.video.generation-json',
+      submitPath: '/videos/generations',
+      pollPathTemplate: '/videos/{taskId}',
+    });
+  });
+
   it('keeps pricing /v1/videos binding as video when scenario is not async-image', () => {
     const bindings = inferBindingsForProviderModel(
       {
