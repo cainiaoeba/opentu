@@ -57,6 +57,28 @@ describe('Video', () => {
     expect(video?.getAttribute('preload')).toBe('auto');
   });
 
+  it('播放前修正上游通用二进制视频的 MIME 类型', async () => {
+    getCachedBlob.mockResolvedValue(
+      new Blob(['video-content'], { type: 'application/octet-stream' })
+    );
+
+    render(
+      <Video
+        videoItem={{
+          url: '/__aitu_cache__/video/task-octet.mp4#video',
+        }}
+      />
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const createObjectURL = vi.mocked(URL.createObjectURL);
+    const playableBlob = createObjectURL.mock.calls[0][0] as Blob;
+    expect(playableBlob.type).toBe('video/mp4');
+  });
+
   it('缓存未命中时降级使用原始虚拟地址', async () => {
     getCachedBlob.mockResolvedValue(null);
 

@@ -13,6 +13,7 @@ import type {
   ProviderVideoBindingMetadata,
   ResolvedProviderContext,
 } from './provider-routing/types';
+import { ensurePlayableVideoBlob } from '../utils/video-blob';
 
 const FIXED_SORA_DURATION_MODEL_PATTERN = /^sora-2-(\d+)s$/i;
 const DEFAULT_VIDEO_POLL_PATH = '/videos/{taskId}';
@@ -557,12 +558,13 @@ export async function downloadVideoContentToLocalUrl(params: {
     );
   }
 
-  const blob = await response.blob();
-  if (!blob.size) {
+  const responseBlob = await response.blob();
+  if (!responseBlob.size) {
     throw new Error('视频内容下载为空');
   }
 
-  const format = getVideoExtensionFromMimeType(blob.type);
+  const format = getVideoExtensionFromMimeType(responseBlob.type);
+  const blob = ensurePlayableVideoBlob(responseBlob, format);
   const cacheKey = params.cacheKey || params.videoId;
   const localUrl = `/__aitu_cache__/video/${cacheKey}.${format}`;
 

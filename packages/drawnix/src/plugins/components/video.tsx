@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import classNames from 'classnames';
 import { unifiedCacheService } from '../../services/unified-cache-service';
 import { isVirtualMediaUrl } from '../../utils/virtual-media-url';
+import { ensurePlayableVideoBlob } from '../../utils/video-blob';
 
 export interface VideoItem {
   url: string;
@@ -57,7 +58,7 @@ export const Video: React.FC<VideoProps> = (props: VideoProps) => {
       if (disposed) return;
 
       if (blob?.size) {
-        objectUrl = URL.createObjectURL(blob);
+        objectUrl = URL.createObjectURL(ensurePlayableVideoBlob(blob, url));
         setPlaybackUrl(objectUrl);
         return;
       }
