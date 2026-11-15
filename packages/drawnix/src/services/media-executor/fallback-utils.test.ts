@@ -1,15 +1,17 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const cacheMediaFromBlob = vi.fn();
 const cachedUrls = new Set<string>();
 const isCached = vi.fn(async (url: string) => cachedUrls.has(url));
 const calculateBlobChecksum = vi.fn(async () => 'a'.repeat(64));
+const compressImageBlob = vi.fn();
 
 vi.mock('@aitu/utils', async () => {
   const actual = await vi.importActual<typeof import('@aitu/utils')>('@aitu/utils');
   return {
     ...actual,
     calculateBlobChecksum,
+    compressImageBlob,
   };
 });
 
@@ -19,6 +21,94 @@ vi.mock('../unified-cache-service', () => ({
     isCached,
   },
 }));
+
+vi.mock('../../utils/config-indexeddb-writer', () => ({
+  configIndexedDBWriter: { saveConfig: vi.fn() },
+}));
+
+function mediaResponse(content: string, type: string): Response {
+  const blob = new Blob([content], { type });
+  return { ok: true, blob: async () => blob } as Response;
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('ensureBase64ForAI', () => {
+  beforeEach(() => {
+    compressImageBlob.mockReset();
+  });
+
+  it('compresses large inline reference images without fetching their data URLs', async () => {
+    // Simulate the production CSP rejecting fetch(data:) while local decoding remains allowed.
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockRejectedValue(new TypeError('Failed to fetch'));
+    vi.stubGlobal('fetch', fetchMock);
+    compressImageBlob.mockResolvedValue(
+      new Blob(['compressed'], { type: 'image/png' })
+    );
+    const { ensureBase64ForAI, MAX_REFERENCE_IMAGE_BYTES } = await import(
+      './fallback-utils'
+    );
+    const value = `data:image/png;base64,${btoa('x'.repeat(MAX_REFERENCE_IMAGE_BYTES + 1))}`;
+
+    const result = await ensureBase64ForAI({ type: 'base64', value });
+
+    expect(result).toBe(`data:image/png;base64,${btoa('compressed')}`);
+    expect(compressImageBlob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        size: MAX_REFERENCE_IMAGE_BYTES + 1,
+        type: 'image/png',
+      }),
+      1
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps small inline references unchanged without network or compression', async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
+    const { ensureBase64ForAI } = await import('./fallback-utils');
+    const value = `data:image/png;base64,${btoa('small')}`;
+
+    expect(await ensureBase64ForAI({ type: 'base64', value })).toBe(value);
+    expect(compressImageBlob).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed large inline data locally without sending a request', async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
+    const { ensureBase64ForAI, MAX_REFERENCE_IMAGE_BYTES } = await import(
+      './fallback-utils'
+    );
+    const value = `data:image/png;base64,${'?'.repeat(MAX_REFERENCE_IMAGE_BYTES * 2)}`;
+
+    await expect(ensureBase64ForAI({ type: 'base64', value })).rejects.toThrow();
+    expect(compressImageBlob).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('stops cancelled large inline references before decoding or compression', async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal('fetch', fetchMock);
+    const { ensureBase64ForAI, MAX_REFERENCE_IMAGE_BYTES } = await import(
+      './fallback-utils'
+    );
+    const controller = new AbortController();
+    const reason = new DOMException('Cancelled', 'AbortError');
+    controller.abort(reason);
+    const value = `data:image/png;base64,${btoa('x'.repeat(MAX_REFERENCE_IMAGE_BYTES + 1))}`;
+
+    await expect(
+      ensureBase64ForAI({ type: 'base64', value }, controller.signal)
+    ).rejects.toBe(reason);
+    expect(compressImageBlob).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('cacheRemoteUrl', () => {
   beforeEach(() => {
@@ -35,11 +125,7 @@ describe('cacheRemoteUrl', () => {
   it('caches raw base64 image payloads as content-addressed local URLs', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(
-        new Response(new Blob(['png-binary'], { type: 'image/png' }), {
-          status: 200,
-        })
-      );
+      .mockRejectedValue(new TypeError('Failed to fetch'));
 
     vi.stubGlobal('fetch', fetchMock);
 
@@ -53,9 +139,7 @@ describe('cacheRemoteUrl', () => {
     );
 
     expect(result).toMatch(/^\/__aitu_cache__\/image\/content-[0-9a-f]{64}\.png$/);
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringMatching(/^data:image\/png;base64,/)
-    );
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(cacheMediaFromBlob).toHaveBeenCalledWith(
       result,
       expect.any(Blob),
@@ -69,11 +153,7 @@ describe('cacheRemoteUrl', () => {
   it('reuses the same cached file for identical base64 payloads across tasks', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockImplementation(async () =>
-        new Response(new Blob(['same-binary'], { type: 'image/png' }), {
-          status: 200,
-        })
-      );
+      .mockRejectedValue(new TypeError('Failed to fetch'));
 
     vi.stubGlobal('fetch', fetchMock);
 
@@ -86,6 +166,7 @@ describe('cacheRemoteUrl', () => {
 
     expect(first).toBe(second);
     expect(cacheMediaFromBlob).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
 
     vi.unstubAllGlobals();
   });
@@ -110,9 +191,7 @@ describe('cacheRemoteUrl', () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(
-        new Response(new Blob(['audio-binary'], { type: 'audio/mpeg' }), {
-          status: 200,
-        })
+        mediaResponse('audio-binary', 'audio/mpeg')
       );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -144,9 +223,7 @@ describe('cacheRemoteUrl', () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(
-        new Response(new Blob(['audio-binary'], { type: 'audio/mpeg' }), {
-          status: 200,
-        })
+        mediaResponse('audio-binary', 'audio/mpeg')
       );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -180,9 +257,7 @@ describe('cacheRemoteUrl', () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(
-        new Response(new Blob(['cover-binary'], { type: 'image/jpeg' }), {
-          status: 200,
-        })
+        mediaResponse('cover-binary', 'image/jpeg')
       );
     vi.stubGlobal('fetch', fetchMock);
 
@@ -218,9 +293,7 @@ describe('cacheRemoteUrl', () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(
-        new Response(new Blob(['cover-binary'], { type: 'image/jpeg' }), {
-          status: 200,
-        })
+        mediaResponse('cover-binary', 'image/jpeg')
       );
     vi.stubGlobal('fetch', fetchMock);
 

@@ -7,6 +7,7 @@
 
 import type { VideoAPIConfig, GeminiConfig } from './types';
 import {
+  base64ToBlob,
   calculateBlobChecksum,
   compressImageBlob,
   getFileExtension,
@@ -49,8 +50,9 @@ export async function ensureBase64ForAI(
     const base64Part = value.slice(value.indexOf(',') + 1);
     const estimatedBytes = (base64Part.length * 3) / 4;
     if (estimatedBytes <= MAX_REFERENCE_IMAGE_BYTES) return value;
-    const res = await fetch(value, { signal });
-    const blob = await res.blob();
+    signal?.throwIfAborted();
+    // data URL 已在本地，不应走 fetch：站点的 connect-src 可以禁止 data:。
+    const blob = base64ToBlob(value);
     return blobToBase64Under1MB(blob);
   }
   if (value.startsWith('http://') || value.startsWith('https://')) {
@@ -355,8 +357,7 @@ export async function cacheRemoteUrl(
   try {
     // data URL / 原始 base64：直接转 Blob 再缓存，避免把大串 base64 存进任务结果
     if (isDataURL(normalizedUrl)) {
-      const response = await fetch(normalizedUrl);
-      const blob = await response.blob();
+      const blob = base64ToBlob(normalizedUrl);
       if (blob.size === 0) {
         console.warn(
           '[cacheRemoteUrl] Empty data URL blob, using original URL'
