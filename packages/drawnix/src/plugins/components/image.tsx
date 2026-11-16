@@ -2,7 +2,14 @@ import type { ImageProps } from '@plait/common';
 import { RectangleClient } from '@plait/core';
 import { Loading, MessagePlugin } from 'tdesign-react';
 import classNames from 'classnames';
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { RotateCw } from 'lucide-react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { Video } from './video';
 import { generateImage } from '../../mcp/tools/image-generation';
 import { getImageRegion } from '../../services/ppt';
@@ -25,6 +32,7 @@ import {
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const XLINK_NS = 'http://www.w3.org/1999/xlink';
+const IMAGE_RETRY_DELAYS = [500, 1000, 2000];
 
 const image3DForeignObjectOverflowRefs = new WeakMap<
   SVGForeignObjectElement,
@@ -149,10 +157,13 @@ const isVideoElement = (imageItem: any): boolean => {
 
 export const Image: React.FC<ImageProps> = (props: ImageProps) => {
   const currentImageUrlRef = useRef(props.imageItem.url);
+  const imageRetryCountRef = useRef(0);
+  const imageRetryTimeoutRef = useRef<number | null>(null);
   const cleanupSWRecoveryRef = useRef<(() => void) | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const svgOverlayRef = useRef<Image3DOverlayRef | null>(null);
   const pptImageGenerationLockRef = useRef(false);
+  const [imageLoadError, setImageLoadError] = useState(false);
 
   const clearSWRecovery = useCallback(() => {
     cleanupSWRecoveryRef.current?.();
@@ -161,17 +172,32 @@ export const Image: React.FC<ImageProps> = (props: ImageProps) => {
 
   useEffect(() => {
     currentImageUrlRef.current = props.imageItem.url;
-    return clearSWRecovery;
+    imageRetryCountRef.current = 0;
+    setImageLoadError(false);
+    if (imageRetryTimeoutRef.current !== null) {
+      window.clearTimeout(imageRetryTimeoutRef.current);
+      imageRetryTimeoutRef.current = null;
+    }
+    return () => {
+      clearSWRecovery();
+      if (imageRetryTimeoutRef.current !== null) {
+        window.clearTimeout(imageRetryTimeoutRef.current);
+        imageRetryTimeoutRef.current = null;
+      }
+    };
   }, [props.imageItem.url, clearSWRecovery]);
 
   const retryImageAfterSWClaim = useCallback(
-    (imageElement: HTMLImageElement) => {
+    (
+      imageElement: HTMLImageElement,
+      onTimeout: () => void
+    ): boolean => {
       if (
         typeof navigator === 'undefined' ||
         !('serviceWorker' in navigator) ||
         navigator.serviceWorker.controller
       ) {
-        return;
+        return false;
       }
 
       clearSWRecovery();
@@ -202,6 +228,7 @@ export const Image: React.FC<ImageProps> = (props: ImageProps) => {
         }
         settled = true;
         clearSWRecovery();
+        onTimeout();
       }, 10_000);
 
       const cleanup = () => {
@@ -220,8 +247,33 @@ export const Image: React.FC<ImageProps> = (props: ImageProps) => {
           }
         })
         .catch(() => undefined);
+      return true;
     },
     [clearSWRecovery, props.imageItem.url]
+  );
+
+  const scheduleImageRetry = useCallback(
+    (imageElement: HTMLImageElement, retryUrl: string, delay: number) => {
+      if (imageRetryTimeoutRef.current !== null) {
+        window.clearTimeout(imageRetryTimeoutRef.current);
+      }
+
+      imageRetryTimeoutRef.current = window.setTimeout(() => {
+        imageRetryTimeoutRef.current = null;
+        if (
+          !imageElement.isConnected ||
+          currentImageUrlRef.current !== props.imageItem.url
+        ) {
+          return;
+        }
+
+        // Reassign the exact remote URL; adding cache-busting parameters can
+        // invalidate signed image URLs.
+        imageElement.removeAttribute('src');
+        imageElement.src = retryUrl;
+      }, delay);
+    },
+    [props.imageItem.url]
   );
 
   // 处理图片加载失败
@@ -229,7 +281,6 @@ export const Image: React.FC<ImageProps> = (props: ImageProps) => {
     (event: any) => {
       const imageElement = event.currentTarget as HTMLImageElement;
       imageElement.style.visibility = 'hidden';
-      retryImageAfterSWClaim(imageElement);
 
       const retry = handleVirtualUrlImageError(
         props.board,
@@ -237,20 +288,44 @@ export const Image: React.FC<ImageProps> = (props: ImageProps) => {
         props.imageItem.url
       );
       if (retry) {
-        window.setTimeout(() => {
-          if (!imageElement.isConnected) {
-            return;
-          }
-          imageElement.src = retry.retryUrl;
-        }, retry.delay);
+        scheduleImageRetry(imageElement, retry.retryUrl, retry.delay);
+        return;
       }
+
+      if (
+        retryImageAfterSWClaim(imageElement, () => setImageLoadError(true))
+      ) {
+        return;
+      }
+
+      const retryIndex = imageRetryCountRef.current;
+      const retryDelay = IMAGE_RETRY_DELAYS[retryIndex];
+      if (retryDelay !== undefined) {
+        imageRetryCountRef.current += 1;
+        scheduleImageRetry(imageElement, props.imageItem.url, retryDelay);
+        return;
+      }
+
+      setImageLoadError(true);
     },
-    [props.board, props.element, props.imageItem.url, retryImageAfterSWClaim]
+    [
+      props.board,
+      props.element,
+      props.imageItem.url,
+      retryImageAfterSWClaim,
+      scheduleImageRetry,
+    ]
   );
   const handleImageLoad = useCallback(
     (event: any) => {
       const imageElement = event.currentTarget as HTMLImageElement;
       imageElement.style.visibility = '';
+      imageRetryCountRef.current = 0;
+      if (imageRetryTimeoutRef.current !== null) {
+        window.clearTimeout(imageRetryTimeoutRef.current);
+        imageRetryTimeoutRef.current = null;
+      }
+      setImageLoadError(false);
       clearSWRecovery();
       clearVirtualUrlImageError(
         props.board,
@@ -259,6 +334,23 @@ export const Image: React.FC<ImageProps> = (props: ImageProps) => {
       );
     },
     [clearSWRecovery, props.board, props.element, props.imageItem.url]
+  );
+  const handleManualImageRetry = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      const imageElement = rootRef.current?.querySelector<HTMLImageElement>(
+        'img.image-origin'
+      );
+      if (!imageElement) {
+        return;
+      }
+
+      imageRetryCountRef.current = 0;
+      setImageLoadError(false);
+      imageElement.style.visibility = 'hidden';
+      scheduleImageRetry(imageElement, props.imageItem.url, 0);
+    },
+    [props.imageItem.url, scheduleImageRetry]
   );
 
   const elementData = props.element as any;
@@ -561,8 +653,12 @@ export const Image: React.FC<ImageProps> = (props: ImageProps) => {
       ref={rootRef}
       data-slideshow-legacy-audio={isLegacyAudioElement ? 'true' : undefined}
       style={
-        image3DTransform || shouldContainFrameImage
-          ? { width: '100%', height: '100%' }
+        image3DTransform || shouldContainFrameImage || imageLoadError
+          ? {
+              width: '100%',
+              height: '100%',
+              ...(imageLoadError ? { position: 'relative' } : {}),
+            }
           : undefined
       }
     >
@@ -575,6 +671,48 @@ export const Image: React.FC<ImageProps> = (props: ImageProps) => {
         onError={handleImageError}
         onLoad={handleImageLoad}
       />
+      {imageLoadError && (
+        <div
+          role="status"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            minHeight: '96px',
+            color: '#666',
+            backgroundColor: '#f5f5f5',
+            fontSize: '13px',
+          }}
+        >
+          <span>图片暂时无法加载</span>
+          <button
+            type="button"
+            aria-label="重试加载图片"
+            title="重试加载图片"
+            onClick={handleManualImageRetry}
+            onPointerDown={(event) => event.stopPropagation()}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '32px',
+              height: '32px',
+              padding: 0,
+              border: '1px solid #d9d9d9',
+              borderRadius: '4px',
+              backgroundColor: '#fff',
+              color: '#444',
+              cursor: 'pointer',
+            }}
+          >
+            <RotateCw size={16} aria-hidden="true" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };
